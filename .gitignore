@@ -1,0 +1,9 @@
+# Directories
+__pycache__/
+.idea/
+
+# OS Files
+.DS_Store
+
+# Temp files
+._*
