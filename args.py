@@ -16,8 +16,8 @@ class args():
     save_per_epoch = 1
     batch_size = 6 # "batch size for training, default is 4"
     dataset = "/home/kim/ai/dataset/coco_train.txt"
-    HEIGHT = 256
-    WIDTH = 256
+    HEIGHT = 240
+    WIDTH = 240
     lr = 1e-4 #"learning rate, default is 0.001"	
     # resume = "models/rgb.pt" # if you have, please put the path of the model like "./models/densefuse_gray.model"
     resume = None

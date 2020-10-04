@@ -141,10 +141,12 @@ def main_worker(gpu, ngpus_per_node, args):
 
         for imgs_A, imgs_B, angle in pbar:
         # for imgs_A, imgs_B, angle in trainloader:
-
+        
+            '''
             if ep == 0 and idx ==0:
                 save_train_samples(imgs_A,imgs_B,idx)
-        
+            '''
+
             if args.gpu is not None:
                 imgs_A = imgs_A.cuda(args.gpu, non_blocking=True)
                 imgs_B = imgs_B.cuda(args.gpu, non_blocking=True)

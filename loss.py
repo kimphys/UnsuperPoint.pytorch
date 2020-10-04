@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import math
+from time import time
 
 import torchvision
 import torchvision.transforms as transforms # Apply homography (rotation, scale, skew, perspective transforms)
@@ -61,8 +62,7 @@ def PointLoss(angle, a_pos, a_scr, pos_A, pos_B, scr_A, scr_B):
 
     ## Repeatable point
     scr_mean = (scr_A + scr_B) / 2
-    RepeatPoint = scr_mean * (Distance - PositionPoint)
-    RepeatPoint = torch.sum(RepeatPoint)
+    RepeatPoint = torch.sum(scr_mean * (Distance - PositionPoint))
 
     return a_pos * PositionPoint + a_scr * ScorePoint + RepeatPoint
 
@@ -90,50 +90,25 @@ def PointPredLoss(a_xy, pos_r):
 
     return loss_x + loss_y
 
-def CorrespondMatrix(pos_A, pos_B, angle):
-
-    B, C, H, W = pos_A.shape[0], pos_A.shape[1], pos_A.shape[2], pos_A.shape[3]
-    pos_A = ApplyHomography(pos_A, angle)
-
-    pos_A_x = pos_A[:,0,:,:].view(-1, H * W)
-    pos_A_y = pos_A[:,1,:,:].view(-1, H * W)
-
-    pos_B_x = pos_B[:,0,:,:].view(-1, H * W)
-    pos_B_y = pos_B[:,1,:,:].view(-1, H * W)
-
-    Correspondence = torch.zeros(B, H * W, H * W)
-
-    for i in range(H * W):
-        for j in range(H * W):
-            distance = (pos_A_x[:,i] - pos_B_x[:,j]).pow(2)
-            distance += (pos_A_y[:,i] - pos_B_y[:,j]).pow(2)
-            distance = torch.sqrt(distance)
-            Correspondence[:,i,j] = distance
-
-    return Correspondence
-
 def DescLoss(lambda_d, pos_A, pos_B, angle, desc_A, desc_B, margin_p, margin_n):
 
     B, C, H, W = desc_A.shape[0], desc_A.shape[1], desc_A.shape[2], desc_A.shape[3]
-                
-    Correspondence = CorrespondMatrix(pos_A, pos_B, angle)
+    
+    pos_A = ApplyHomography(pos_A, angle)
 
-    loss = 0
-    desc_A = desc_A.view(B,C,H * W)
-    desc_B = desc_B.view(B,C,H * W)
+    pos_A = pos_A.view(B, 2, H * W).transpose(1,2)
+    pos_B = pos_B.view(B, 2, H * W).transpose(1,2)
+    pos_dist = torch.cdist(pos_A,pos_B)
+    ConstantMatrix = torch.where(pos_dist >= 8, torch.ones(pos_dist.shape), torch.zeros(pos_dist.shape))
+    
+    desc_A = desc_A.view(B, C, H * W).transpose(1,2)
+    desc_B = desc_B.view(B, C, H * W)
 
-    for b in range(B):
-        for i in range(H * W):
-            for j in range(H * W):
-                constant = 1 if Correspondence[b,i,j] >= 8 else 0
+    product = torch.bmm(desc_A, desc_B)
+    product_p = torch.where(product < margin_p, product - margin_p, torch.zeros(product.shape))
+    product_n = torch.where(product > margin_n, product - margin_n, torch.zeros(product.shape))
 
-                f_A = desc_A[b,:,i]
-                f_B = desc_B[b,:,j]
-
-                f_product = torch.dot(f_A,f_B)
-
-                loss += lambda_d * constant * max(0,margin_p - f_product)
-                loss += (1 - constant) * max(0, f_product - margin_n)
+    loss = torch.sum(lambda_d * ConstantMatrix * product_p + (1 - ConstantMatrix) * product_n)
 
     return loss
 
@@ -151,18 +126,18 @@ def ComputeLoss(angle, scr_A, scr_B, pos_A_r, pos_B_r, pos_A, pos_B, desc_A, des
     d_loss = DescLoss(lambda_d, pos_A, pos_B, angle, desc_A, desc_B, margin_p, margin_n)
     deco_loss = DecorreDescLoss(desc_A, desc_B)
 
-    return a_usp * p_loss + a_xy * pred_loss + a_desc * d_loss + a_decorr * deco_loss
+    return a_usp * p_loss + a_xy * pred_loss + a_desc * d_loss + a_decorr * deco_loss                   
 
 if __name__ == "__main__":
     angle = torch.FloatTensor([30, -10])
-    scr_A = torch.rand(2,1,20,20)
-    scr_B = torch.rand(2,1,20,20)
-    pos_A_r = torch.rand(2,2,20,20)
-    pos_B_r = torch.rand(2,2,20,20)
-    pos_A = torch.rand(2,2,20,20)
-    pos_B = torch.rand(2,2,20,20)
-    desc_A = torch.rand(2,256,20,20)
-    desc_B = torch.rand(2,256,20,20)
+    scr_A = torch.rand(2,1,32,32)
+    scr_B = torch.rand(2,1,32,32)
+    pos_A_r = torch.rand(2,2,32,32)
+    pos_B_r = torch.rand(2,2,32,32)
+    pos_A = torch.rand(2,2,32,32)
+    pos_B = torch.rand(2,2,32,32)
+    desc_A = torch.rand(2,256,32,32)
+    desc_B = torch.rand(2,256,32,32)
 
     loss = ComputeLoss(angle, scr_A, scr_B, pos_A_r, pos_B_r, pos_A, pos_B, desc_A, desc_B)
 
