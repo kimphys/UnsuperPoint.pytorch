@@ -132,7 +132,7 @@ def main_worker(gpu, ngpus_per_node, args):
     
     img_path_file = args.dataset
 
-    trainloader = DataLoader(MyTrainDataset(img_path_file), batch_size=args.batch_size, shuffle=False, num_workers=4)
+    trainloader = DataLoader(MyTrainDataset(img_path_file), batch_size=args.batch_size, shuffle=True, num_workers=4)
 
     for ep in range(epoch, args.epochs):
 
@@ -151,8 +151,10 @@ def main_worker(gpu, ngpus_per_node, args):
 
             optimizer.zero_grad()
 
-            scr_A, pos_A_r, pos_A, desc_A = model(imgs_A)
-            scr_B, pos_B_r, pos_B, desc_B = model(imgs_B)
+            preds_A, preds_B = model(imgs_A,imgs_B)
+
+            scr_A, pos_A_r, pos_A, desc_A = preds_A[0], preds_A[1], preds_A[2], preds_A[3]
+            scr_B, pos_B_r, pos_B, desc_B = preds_B[0], preds_B[1], preds_B[2], preds_B[3]
             
             loss = ComputeLoss(angle, scr_A, scr_B, pos_A_r, pos_B_r, pos_A, pos_B, desc_A, desc_B)
             loss.backward()

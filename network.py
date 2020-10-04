@@ -156,7 +156,7 @@ class Unsuperpoint(nn.Module):
         self.position = PositionXY(in_channels=p_channels)
         self.descriptor = Descriptor(in_channels=d_channels)
 
-    def forward(self, x):
+    def forward_once(self, x):
         h, w = x.shape[2], x.shape[3]
         x = self.backbone(x)
 
@@ -167,16 +167,29 @@ class Unsuperpoint(nn.Module):
 
         return x1, x2_r, x2, x3
 
-if __name__ == "__main__":
-    inputs = torch.autograd.Variable(torch.rand(3,3,256,256))
+    def forward(self, input1, input2):
+        output1 = self.forward_once(input1)
+        output2 = self.forward_once(input2)
 
-    print("Input: ", inputs.shape)
+        return output1, output2
+
+if __name__ == "__main__":
+    inputs1 = torch.autograd.Variable(torch.rand(3,3,256,256))
+    inputs2 = torch.autograd.Variable(torch.rand(3,3,256,256))
+
+    print("Input1: {}, Input2: {}".format(inputs1.shape, inputs2.shape))
 
     model = Unsuperpoint()
 
-    preds = model(inputs)
+    preds_1, preds_2 = model(inputs1, inputs2)
 
-    print("Score: ", preds[0].shape)
-    print("Relative position: ", preds[1].shape)
-    print("Mapping position: ", preds[2].shape)
-    print("Descriptor: ", preds[3].shape) 
+    print("---For input 1---")
+    print("Score: ", preds_1[0].shape)
+    print("Relative position: ", preds_1[1].shape)
+    print("Mapping position: ", preds_1[2].shape)
+    print("Descriptor: ", preds_1[3].shape)
+    print("---For input 2---")
+    print("Score: ", preds_2[0].shape)
+    print("Relative position: ", preds_2[1].shape)
+    print("Mapping position: ", preds_2[2].shape)
+    print("Descriptor: ", preds_2[3].shape) 
