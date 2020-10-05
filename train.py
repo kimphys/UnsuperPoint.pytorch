@@ -21,6 +21,8 @@ import random
 import numpy as np
 from tqdm import tqdm
 from PIL import Image
+from time import time
+import math
 
 from network import Unsuperpoint
 from args import args
@@ -29,7 +31,8 @@ from utils import save_train_samples
 
 is_cuda = torch.cuda.is_available()
 
-os.environ["RANK"] = "0"
+os.environ['MASTER_ADDR'] = '127.0.0.1'
+os.environ['MASTER_PORT'] = '29500'
 
 class MyTrainDataset(Dataset):
     def __init__(self, img_path_file):
@@ -41,25 +44,24 @@ class MyTrainDataset(Dataset):
     
     def __getitem__(self, index):
         img_1 = Image.open(self.img_list[index]).convert('RGB')
-        img_2 = img_1.copy()
 
         angle = random.randint(-30,30)
-        img_2 = transforms.functional.rotate(img_2,angle)            
-
+        img_2 = transforms.functional.rotate(img_1,angle)            
+        
         custom_transform = transforms.Compose([transforms.Resize((args.HEIGHT,args.WIDTH)),
                                                transforms.ToTensor()])
         
         img_1 = custom_transform(img_1)
         img_2 = custom_transform(img_2)
 
-        return img_1, img_2, angle
+        return img_1, img_2, angle * math.pi / 180
 
     def __len__(self):
 
         return len(self.img_list)
 
 def setup(rank, world_size):
-    dist.init_process_group("gloo", rank=rank, world_size=world_size)
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
 def cleanup():
     dist.destropy_process_group
@@ -132,7 +134,7 @@ def main_worker(gpu, ngpus_per_node, args):
     
     img_path_file = args.dataset
 
-    trainloader = DataLoader(MyTrainDataset(img_path_file), batch_size=args.batch_size, shuffle=True, num_workers=4)
+    trainloader = DataLoader(MyTrainDataset(img_path_file), batch_size=args.batch_size, pin_memory=False, shuffle=True, num_workers=args.workers)
 
     for ep in range(epoch, args.epochs):
 
@@ -157,12 +159,15 @@ def main_worker(gpu, ngpus_per_node, args):
 
             scr_A, pos_A_r, pos_A, desc_A = preds_A[0], preds_A[1], preds_A[2], preds_A[3]
             scr_B, pos_B_r, pos_B, desc_B = preds_B[0], preds_B[1], preds_B[2], preds_B[3]
-            
+
             loss = ComputeLoss(angle, scr_A, scr_B, pos_A_r, pos_B_r, pos_A, pos_B, desc_A, desc_B)
+            
             loss.backward()
             optimizer.step()
 
             idx += 1
+        if torch.cuda.current_device() == 0:
+            print("GPU{} Total_loss:".format(torch.cuda.current_device()), loss)
 
         if (ep + 1) % args.save_per_epoch == 0:
             # Save model

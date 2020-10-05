@@ -25,18 +25,13 @@ def ApplyHomography(pA, angle):
     # The angle as the input is written in the degree, NOT RADIAN
     # So, we need to convert it from degree to radian.
 
-    angle_r = angle * math.pi / 180
-
     B, C, H, W = pA.shape[0], pA.shape[1], pA.shape[2], pA.shape[3]
 
     for b in range(B):
-        for i in range(H): 
-            for j in range(W):
-                pA_x = pA[b,0,i,j]
-                pA_y = pA[b,1,i,j]
-                
-                pA[b,0,i,j] = pA_x * math.cos(angle_r[b]) - pA_y * math.sin(angle_r[b])
-                pA[b,1,i,j] = pA_x * math.sin(angle_r[b]) + pA_y * math.cos(angle_r[b])
+        pA_x = pA[b,0,:,:]
+        pA_y = pA[b,1,:,:]
+        pA[b,0,:,:] = pA_x * torch.cos(angle[b]) - pA_y * torch.sin(angle[b])
+        pA[b,1,:,:] = pA_x * torch.sin(angle[b]) + pA_y * torch.cos(angle[b])
 
     return pA
 
@@ -66,18 +61,9 @@ def PointLoss(angle, a_pos, a_scr, pos_A, pos_B, scr_A, scr_B):
 
     return a_pos * PositionPoint + a_scr * ScorePoint + RepeatPoint
 
-def DistributionDistance(pos_sorted, M):
-
-    DDistance = 0
-
-    for i in range(M):
-        DDistance += (pos_sorted[i] - (i - 1)/(M - 1)) * (pos_sorted[i] - (i - 1)/(M - 1))
-
-    return DDistance
-
 def PointPredLoss(a_xy, pos_r):
 
-    H, W = pos_r.shape[2], pos_r.shape[3]
+    B, C, H, W = pos_r.shape[0], pos_r.shape[1], pos_r.shape[2], pos_r.shape[3]
     
     pos_X = pos_r[:,0,:,:].view(-1, H * W)
     pos_Y = pos_r[:,1,:,:].view(-1, H * W)
@@ -85,10 +71,10 @@ def PointPredLoss(a_xy, pos_r):
     pos_X_sorted, pos_X_indices = torch.sort(pos_X)
     pos_Y_sorted, pos_Y_indices = torch.sort(pos_Y)
 
-    loss_x = DistributionDistance(pos_X_sorted[0], H * W)
-    loss_y = DistributionDistance(pos_Y_sorted[0], H * W)
+    loss_x = torch.pow((pos_X - torch.true_divide((pos_X_indices - 1),(H * W - 1))),2)
+    loss_y = torch.pow((pos_Y - torch.true_divide((pos_Y_indices - 1),(H * W - 1))),2)
 
-    return loss_x + loss_y
+    return torch.sum(loss_x + loss_y)
 
 def DescLoss(lambda_d, pos_A, pos_B, angle, desc_A, desc_B, margin_p, margin_n):
 
@@ -99,14 +85,25 @@ def DescLoss(lambda_d, pos_A, pos_B, angle, desc_A, desc_B, margin_p, margin_n):
     pos_A = pos_A.view(B, 2, H * W).transpose(1,2)
     pos_B = pos_B.view(B, 2, H * W).transpose(1,2)
     pos_dist = torch.cdist(pos_A,pos_B)
-    ConstantMatrix = torch.where(pos_dist >= 8, torch.ones(pos_dist.shape), torch.zeros(pos_dist.shape))
+    
     
     desc_A = desc_A.view(B, C, H * W).transpose(1,2)
     desc_B = desc_B.view(B, C, H * W)
 
     product = torch.bmm(desc_A, desc_B)
-    product_p = torch.where(product < margin_p, product - margin_p, torch.zeros(product.shape))
-    product_n = torch.where(product > margin_n, product - margin_n, torch.zeros(product.shape))
+
+    ones = torch.ones(pos_dist.shape)
+    zeros_dist = torch.zeros(pos_dist.shape)   
+    zeros_p = torch.zeros(product.shape)  
+
+    if args.gpu is not None:
+        ones = ones.cuda(args.gpu, non_blocking=True)
+        zeros_dist = zeros_dist.cuda(args.gpu, non_blocking=True)
+        zeros_p = zeros_p.cuda(args.gpu, non_blocking=True)
+
+    ConstantMatrix = torch.where(pos_dist >= 8, ones, zeros_dist)
+    product_p = torch.where(product < margin_p, product - margin_p, zeros_p)
+    product_n = torch.where(product > margin_n, product - margin_n, zeros_p)
 
     loss = torch.sum(lambda_d * ConstantMatrix * product_p + (1 - ConstantMatrix) * product_n)
 
@@ -122,8 +119,11 @@ def DecorreDescLoss(desc_A, desc_B):
 def ComputeLoss(angle, scr_A, scr_B, pos_A_r, pos_B_r, pos_A, pos_B, desc_A, desc_B):
 
     p_loss = PointLoss(angle, a_pos, a_scr, pos_A, pos_B, scr_A, scr_B)
+
     pred_loss = PointPredLoss(a_xy, pos_A_r) + PointPredLoss(a_xy, pos_B_r)
+
     d_loss = DescLoss(lambda_d, pos_A, pos_B, angle, desc_A, desc_B, margin_p, margin_n)
+
     deco_loss = DecorreDescLoss(desc_A, desc_B)
 
     return a_usp * p_loss + a_xy * pred_loss + a_desc * d_loss + a_decorr * deco_loss                   
