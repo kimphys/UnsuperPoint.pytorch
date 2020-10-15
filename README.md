@@ -1,6 +1,6 @@
 # Note
 
-This repository is under construction. I do not guarantee the efficiency of this. Please use only for reference.
+This repository is under construction. I do not guarantee the efficiency of this. Please use only for reference. I'll update it soon.
 
 # Introduction
 
