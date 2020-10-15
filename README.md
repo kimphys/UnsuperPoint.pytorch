@@ -1,3 +1,7 @@
+# Note
+
+This repository is under construction. I do not guarantee the efficiency of this. Please use only for reference.
+
 # Introduction
 
 This repository is a PyTorch implementation of [UnsuperPoint: End-to-end Unsupervised Interest Point Detector and Descriptor](https://arxiv.org/abs/1907.04011).
